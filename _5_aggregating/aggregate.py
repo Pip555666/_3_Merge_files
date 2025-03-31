@@ -2,6 +2,7 @@ import os
 import argparse
 import pandas as pd
 import matplotlib.pyplot as plt
+import subprocess
 from sklearn.cluster import KMeans
 import numpy as np
 
@@ -37,6 +38,18 @@ def setup(output_dir="_5_aggregating/chart"):
     print(f"📂 Chart directory created at: {chart_dir}")
     return chart_dir
 
+def upload_to_hdfs(local_path, hdfs_path):
+    """
+    📌 HDFS에 파일 업로드
+    - subprocess를 이용하여 hdfs dfs -put 실행
+    """
+    try:
+        cmd = f"hdfs dfs -put -f {local_path} {hdfs_path}"
+        subprocess.run(cmd, shell=True, check=True)
+        print(f"✅ Uploaded {local_path} to HDFS: {hdfs_path}")
+    except subprocess.CalledProcessError as e:
+        print(f"❌ HDFS Upload Failed: {e}")
+
 def load_and_preprocess(file_path, data_dir="_0_data/_3_predict"):
     """
     📌 데이터 로드 및 전처리
@@ -60,24 +73,26 @@ def load_and_preprocess(file_path, data_dir="_0_data/_3_predict"):
     df["공포탐욕지수"] = df["prob_greed"] * 100
     return df
 
-def calculate_fear_greed(df, company, chart_dir):
+def calculate_fear_greed(df, company, chart_dir, hdfs_dir):
     df_hourly = df.groupby(["year", "hour"]).agg({"공포탐욕지수": "mean"}).reset_index()
     hourly_path = os.path.join(chart_dir, f"{company}_hourly_feargreed_score_bert.csv")
     df_hourly.to_csv(hourly_path, index=False, encoding="utf-8-sig")
-    print(f"✅ Saved hourly fear-greed score to: {hourly_path}")
+    upload_to_hdfs(hourly_path, os.path.join(hdfs_dir, f"{company}_hourly_feargreed_score_bert.csv"))
 
     df_monthly = df.groupby("month").agg({"공포탐욕지수": "mean"}).reset_index()
     monthly_path = os.path.join(chart_dir, f"{company}_monthly_feargreed_score_bert.csv")
     df_monthly.to_csv(monthly_path, index=False, encoding="utf-8-sig")
-    print(f"✅ Saved monthly fear-greed score to: {monthly_path}")
+    upload_to_hdfs(monthly_path, os.path.join(hdfs_dir, f"{company}_monthly_feargreed_score_bert.csv"))
+
     return df_monthly
 
-def calculate_change_rate(df, company, chart_dir):
+def calculate_change_rate(df, company, chart_dir, hdfs_dir):
     df["feargreed_diff"] = df.groupby("year")["공포탐욕지수"].diff()
     df_change_rate = df.groupby(["year", "hour"]).agg({"feargreed_diff": "mean"}).reset_index()
     change_rate_path = os.path.join(chart_dir, f"{company}_feargreed_change_rate.csv")
     df_change_rate.to_csv(change_rate_path, index=False, encoding="utf-8-sig")
-    print(f"✅ Saved change rate to: {change_rate_path}")
+    upload_to_hdfs(change_rate_path, os.path.join(hdfs_dir, f"{company}_feargreed_change_rate.csv"))
+
     return df_change_rate
 
 # ✅ 이동 평균 분석 (주석 유지)
@@ -86,7 +101,6 @@ def calculate_change_rate(df, company, chart_dir):
 #     df_monthly["장기_이동평균"] = df_monthly["공포탐욕지수"].rolling(window=30).mean()
 #     moving_avg_path = os.path.join(chart_dir, f"{company}_moving_average.csv")
 #     df_monthly.to_csv(moving_avg_path, index=False, encoding="utf-8-sig")
-#     print(f"✅ Saved moving average to: {moving_avg_path}")
 #     return df_monthly
 
 # ✅ 클러스터 분석 (주석 유지)
@@ -104,7 +118,6 @@ def calculate_change_rate(df, company, chart_dir):
 
     cluster_path = os.path.join(chart_dir, f"{company}_cluster_analysis.csv")
     df_monthly.to_csv(cluster_path, index=False, encoding="utf-8-sig")
-    print(f"✅ Saved cluster analysis to: {cluster_path}")
     return df_monthly
 
 def save_plots(df_change_rate, df_monthly, company, chart_dir):
@@ -127,19 +140,15 @@ def save_plots(df_change_rate, df_monthly, company, chart_dir):
     monthly_plot = os.path.join(chart_dir, f"{company}_monthly_fear_and_greed.png")
     plt.savefig(monthly_plot)
     plt.close()
-    print(f"📊 Saved plots for {company}.")
 
 def main():
     chart_dir = setup()
     file_path = f"{company}_predict_bert.csv"
+    hdfs_dir = f"/user/hdfs/{company}/"
+
     df = load_and_preprocess(file_path)
-
-    df_monthly = calculate_fear_greed(df, company, chart_dir)
-    df_change_rate = calculate_change_rate(df, company, chart_dir)
-
-    # df_monthly = calculate_moving_average(df_monthly, company, chart_dir)
-    # df_monthly = cluster_analysis(df_monthly, company, chart_dir)
-
+    df_monthly = calculate_fear_greed(df, company, chart_dir, hdfs_dir)
+    df_change_rate = calculate_change_rate(df, company, chart_dir, hdfs_dir)
     save_plots(df_change_rate, df_monthly, company, chart_dir)
 
 if __name__ == "__main__":
