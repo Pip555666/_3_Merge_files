@@ -213,7 +213,7 @@ if __name__ == "__main__":
     db_config = {
         'host': 'localhost',
         'user': 'root',
-        'password': 'Qlsl0316',
+        'password': 'PW',
         'database': 'stock_analysis'
     }
 
